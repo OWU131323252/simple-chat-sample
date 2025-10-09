@@ -45,6 +45,12 @@
 
       let targetX;
       let targetY;
+      let img;
+
+      function preload(){
+        img = loadImage("131323252ikuta_1.gif");
+      }
+
       function setup() {
         createCanvas(500, 500);
         background(200);
@@ -57,11 +63,15 @@
 
       function draw() {
         background(200);
-        circle(targetX,targetY,30,30);
+        circle(targetX,targetY,30);
         x += g*0.02;
         y += b*0.02;
         if ( dist(x,y, targetX, targetY) < 10 ) background(0);  // (dist(x,y, targetX, targetY) < 10)
-        circle(x, y, 50);
+        if(x > width) x = width;
+        if(x < 0) x = 0;
+        if(y > height) y = height;
+        if(y < 0) y = 0;
+        image;(img, x, y, 50, 50);
       }
 
     </script>
