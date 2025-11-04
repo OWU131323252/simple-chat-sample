@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>加速度センサを利用したゲーム</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.3/socket.io.js"></script>
+  </head>
+
+  <body style="margin:0;background:black;color:white;">
+    <h1 style="padding:10px;">バウンドゲーム</h1>
+    <div style="padding:10px;">
+      あなたのID: <span id="myid"></span><br />
+      <button id="connect">ルームに入る</button>
+    </div>
+
+    <script>
+      // ====== Socket.IO 接続 ======
+      let socket = io.connect();
+      let btn = document.querySelector("#connect");
+      let g = 0;
+      let b = 0;
+
+      let myid = sessionStorage.getItem("clientId");
+      if (!myid) {
+        myid = Math.random().toString(36).substring(2, 15);
+        sessionStorage.setItem("clientId", myid);
+      }
+      document.querySelector("#myid").innerHTML = myid;
+
+      btn.addEventListener("click", function () {
+        socket.emit("join", "game");
+        btn.remove();
+      });
+
+      socket.on("sensor", function (data) {
+        g = parseFloat(data.g);
+        b = parseFloat(data.b);
+      });
+
+      // ====== p5.js 部分 ======
+      let ball;
+      let walls = [];
+      let gravityX = 0;
+      let gravityY = 0;
+      let goal;
+      let gameClear = false;
+
+      function setup() {
+        createCanvas(windowWidth, windowHeight);
+        ball = new Ball(50, 50);
+        generateMaze();
+        goal = new Goal(random(width * 0.7, width - 50), random(height * 0.7, height - 50));
+      }
+
+      function draw() {
+        background(0);
+
+        if (!gameClear) {
+          gravityX = radians(g) * 0.8;
+          gravityY = radians(b) * 0.8;
+
+          ball.update(gravityX, gravityY);
+          ball.checkWalls(walls);
+          ball.display();
+
+          for (let w of walls) w.display();
+
+          goal.display();
+
+          // ゴール判定
+          if (dist(ball.pos.x, ball.pos.y, goal.x, goal.y) < ball.r + goal.r) {
+            gameClear = true;
+          }
+
+          fill(255);
+          textSize(18);
+          textAlign(LEFT, TOP);
+          text("スマホを傾けてボールを転がそう！", 10, 10);
+        } else {
+          // 🎉 クリア画面
+          fill(255, 255, 0);
+          textAlign(CENTER, CENTER);
+          textSize(40);
+          text("🎉 クリア！ 🎉", width / 2, height / 2);
+          textSize(18);
+          text("リロードでもういちど", width / 2, height / 2 + 60);
+        }
+      }
+
+      function generateMaze() {
+        walls = [];
+        let numWalls = int(random(15, 20));
+        for (let i = 0; i < numWalls; i++) {
+          let x1 = random(50, width - 50);
+          let y1 = random(50, height - 50);
+          let len = random(100, 300);
+          let angle = random(TWO_PI);
+          let x2 = x1 + cos(angle) * len;
+          let y2 = y1 + sin(angle) * len;
+          walls.push(new Wall(x1, y1, x2, y2));
+        }
+        // 外枠
+        walls.push(new Wall(0, 0, width, 0));
+        walls.push(new Wall(width, 0, width, height));
+        walls.push(new Wall(width, height, 0, height));
+        walls.push(new Wall(0, height, 0, 0));
+      }
+
+      class Ball {
+        constructor(x, y) {
+          this.pos = createVector(x, y);
+          this.vel = createVector(0, 0);
+          this.acc = createVector(0, 0);
+          this.r = 15;
+        }
+
+        update(gx, gy) {
+          this.acc.set(gx, gy);
+          this.vel.add(this.acc);
+          this.vel.limit(10);
+          this.pos.add(this.vel);
+        }
+
+        checkWalls(walls) {
+          for (let w of walls) {
+            let closest = w.closestPoint(this.pos);
+            let distToWall = p5.Vector.dist(this.pos, closest);
+            if (distToWall < this.r) {
+              let normal = p5.Vector.sub(this.pos, closest).normalize();
+              let overlap = this.r - distToWall;
+              this.pos.add(normal.mult(overlap));
+              let dot = this.vel.dot(normal);
+              this.vel.sub(p5.Vector.mult(normal, 2 * dot));
+              this.vel.mult(0.8);
+            }
+          }
+        }
+
+        display() {
+          fill(0, 255, 255);
+          noStroke();
+          ellipse(this.pos.x, this.pos.y, this.r * 2);
+        }
+      }
+
+      class Wall {
+        constructor(x1, y1, x2, y2) {
+          this.a = createVector(x1, y1);
+          this.b = createVector(x2, y2);
+        }
+
+        display() {
+          stroke(255);
+          strokeWeight(3);
+          line(this.a.x, this.a.y, this.b.x, this.b.y);
+        }
+
+        closestPoint(p) {
+          let ap = p5.Vector.sub(p, this.a);
+          let ab = p5.Vector.sub(this.b, this.a);
+          let t = constrain(ap.dot(ab) / ab.magSq(), 0, 1);
+          return p5.Vector.add(this.a, ab.mult(t));
+        }
+      }
+
+      class Goal {
+        constructor(x, y) {
+          this.x = x;
+          this.y = y;
+          this.r = 20;
+        }
+
+        display() {
+          fill(255, 230, 0);
+          noStroke();
+          ellipse(this.x, this.y, this.r * 2);
+        }
+      }
+
+      function windowResized() {
+        resizeCanvas(windowWidth, windowHeight);
+        generateMaze();
+        goal = new Goal(random(width * 0.7, width - 50), random(height * 0.7, height - 50));
+      }
+    </script>
+  </body>
+</html>
